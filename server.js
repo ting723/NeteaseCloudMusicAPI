@@ -8,7 +8,7 @@ const cache = require('./util/apicache').middleware
 const { cookieToJson } = require('./util/index')
 const fileUpload = require('express-fileupload')
 const decode = require('safe-decode-uri-component')
-require("dotenv").config();
+require('dotenv').config()
 /**
  * The version check result.
  * @readonly
@@ -147,7 +147,8 @@ async function consturctServer(moduleDefs) {
     if (req.path !== '/' && !req.path.includes('.')) {
       res.set({
         'Access-Control-Allow-Credentials': true,
-        'Access-Control-Allow-Origin': CORS_ALLOW_ORIGIN || req.headers.origin || '*',
+        'Access-Control-Allow-Origin':
+          CORS_ALLOW_ORIGIN || req.headers.origin || '*',
         'Access-Control-Allow-Headers': 'X-Requested-With,Content-Type',
         'Access-Control-Allow-Methods': 'PUT,POST,GET,DELETE,OPTIONS',
         'Content-Type': 'application/json; charset=utf-8',
@@ -197,6 +198,47 @@ async function consturctServer(moduleDefs) {
   /**
    * Load every modules in this directory
    */
+  // Add new proxy route
+  app.get('/proxy/*', async (req, res) => {
+    const targetUrl = req.params[0]
+    console.log(`Proxying to: ${targetUrl}`)
+    if (!targetUrl) {
+      return res.status(400).send('Missing target URL')
+    }
+
+    try {
+      const targetURLObj = new URL(targetUrl)
+      // Merge query parameters from the original request
+      Object.keys(req.query).forEach((key) => {
+        targetURLObj.searchParams.append(key, req.query[key])
+      })
+
+      const httpModule =
+        targetURLObj.protocol === 'https:' ? require('https') : require('http')
+
+      const options = {
+        hostname: targetURLObj.hostname,
+        path: targetURLObj.pathname + targetURLObj.search,
+        method: 'GET',
+      }
+
+      const proxyReq = httpModule.request(options, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers)
+        proxyRes.pipe(res)
+      })
+
+      proxyReq.on('error', (e) => {
+        console.error(`Proxy request error: ${e.message}`)
+        res.status(500).send('Error fetching target URL')
+      })
+
+      proxyReq.end()
+    } catch (e) {
+      console.error(`URL parsing or request error: ${e.message}`)
+      res.status(400).send('Invalid target URL')
+    }
+  })
+
   const moduleDefinitions =
     moduleDefs ||
     (await getModulesDefinitions(path.join(__dirname, 'module'), special))
@@ -241,16 +283,19 @@ async function consturctServer(moduleDefs) {
 
         if (req.baseUrl === '/song/url/v1' || req.baseUrl === '/song/url') {
           const song = moduleResponse['body']['data'][0]
-            if (song.freeTrialInfo !== null || !song.url || [1, 4].includes(song.fee)) {
-              const match = require('@unblockneteasemusic/server')
-              const source = ['pyncmd', 'kuwo']
-              const { url } = await match(req.query.id, source)
-              song.url = url
-              song.freeTrialInfo = 'unblock'
-              console.log("解灰成功!")// 对于Splayer来说，去除开通会员提示
-            }
+          if (
+            song.freeTrialInfo !== null ||
+            !song.url ||
+            [1, 4].includes(song.fee)
+          ) {
+            const match = require('@unblockneteasemusic/server')
+            const source = ['pyncmd', 'kuwo']
+            const { url } = await match(req.query.id, source)
+            song.url = url
+            song.freeTrialInfo = 'unblock'
+            console.log('解灰成功!') // 对于Splayer来说，去除开通会员提示
+          }
         }
-
 
         const cookies = moduleResponse.cookie
         if (!query.noCookie) {
