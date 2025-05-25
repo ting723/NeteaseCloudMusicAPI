@@ -208,17 +208,18 @@ async function consturctServer(moduleDefs) {
 
     try {
       const targetURLObj = new URL(targetUrl)
-      // Merge query parameters from the original request
-      Object.keys(req.query).forEach((key) => {
-        targetURLObj.searchParams.append(key, req.query[key])
-      })
+      // Manually construct the query string to preserve parameter order and duplicates
+      const originalQuery = req.url.split('?')[1] || ''
+      const mergedQuery = targetURLObj.search
+        ? `${targetURLObj.search.substring(1)}&${originalQuery}`
+        : originalQuery
 
       const httpModule =
         targetURLObj.protocol === 'https:' ? require('https') : require('http')
 
       const options = {
         hostname: targetURLObj.hostname,
-        path: targetURLObj.pathname + targetURLObj.search,
+        path: targetURLObj.pathname + (mergedQuery ? '?' + mergedQuery : ''),
         method: 'GET',
       }
 
